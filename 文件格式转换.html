@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件格式转换 - EPUB 转 TXT</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+</head>
+<body class="bg-[#fcfbf9] text-stone-800 p-4 md:p-8 font-sans min-h-screen">
+    <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6" id="main-container">
+        <aside class="lg:col-span-3 space-y-5 lg:sticky lg:top-4 lg:self-start" style="max-height: calc(100vh - 2rem); overflow-y: auto; overflow-x: hidden;" id="sidebar">
+            <header class="flex items-center gap-3 mb-2">
+                <div class="bg-stone-900 p-2.5 rounded-2xl shadow-lg">
+                    <svg class="text-white w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                    </svg>
+                </div>
+                <h1 class="text-xl font-black font-serif tracking-tight">文件格式转换——EPUB转TXT</h1>
+            </header>
+
+            <section class="bg-white p-4 rounded-xl border border-stone-100 shadow-sm space-y-3" id="upload-section">
+                <h2 class="text-[10px] font-black text-stone-300 uppercase tracking-widest">上传文件</h2>
+                <label id="upload-area" class="block border-2 border-dashed border-stone-100 rounded-2xl p-14 text-center cursor-pointer hover:bg-stone-50 transition-all group">
+                    <input type="file" accept=".epub" multiple class="hidden" id="file-input" onchange="handleFileSelect(event)">
+                    <svg class="w-6 h-6 mx-auto mb-2 text-stone-300 group-hover:text-stone-900 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                    </svg>
+                    <p class="text-xs font-bold text-stone-400">点击或拖拽 EPUB 文件到此处</p>
+                </label>
+                <button onclick="document.getElementById('file-input').click()" id="add-book-btn" class="hidden w-full border-2 border-dashed border-stone-100 rounded-2xl p-3 text-center cursor-pointer hover:bg-stone-50 transition-all group">
+                    <svg class="w-6 h-6 mx-auto mb-2 text-stone-300 group-hover:text-stone-900 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    <p class="text-xs font-bold text-stone-400">添加 EPUB 文件</p>
+                </button>
+            </section>
+
+            <section class="bg-white p-4 rounded-xl border border-stone-100 shadow-sm hidden" id="action-buttons">
+                <button onclick="startConversion()" id="convert-btn" class="w-full bg-stone-900 text-white px-6 py-4 rounded-xl text-sm font-black flex items-center justify-center gap-2 hover:bg-stone-800 transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    开始转换
+                </button>
+            </section>
+
+            <section class="bg-white p-4 rounded-xl border border-stone-100 shadow-sm space-y-3 hidden" id="progress-section">
+                <h2 class="text-[10px] font-black text-stone-300 uppercase tracking-widest">转换进度</h2>
+                <div class="flex justify-between items-center mb-2">
+                    <span id="progress-percent" class="text-xs font-black text-stone-700">0%</span>
+                </div>
+                <div class="w-full h-2 bg-stone-100 rounded-full overflow-hidden">
+                    <div id="progress-fill" class="h-full bg-stone-900 transition-all duration-300" style="width: 0%"></div>
+                </div>
+                <p id="status-text" class="text-xs text-stone-600 text-center"></p>
+            </section>
+
+            <section class="bg-white p-4 rounded-xl border border-stone-100 shadow-sm space-y-3 hidden" id="file-list-section">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-[10px] font-black text-stone-300 uppercase tracking-widest">文件列表 (<span id="file-count">0</span>)</h2>
+                    <button onclick="clearFiles()" class="text-sm font-bold text-stone-500 hover:text-stone-700 transition-colors">清空列表</button>
+                </div>
+                <div class="space-y-2" id="file-list"></div>
+            </section>
+
+            <section class="bg-white p-4 rounded-xl border border-stone-100 shadow-sm space-y-3 hidden" id="message-section">
+                <div id="success-message" class="hidden bg-green-50 border border-green-100 text-green-700 p-4 rounded-xl text-xs font-bold flex items-center gap-2">
+                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    <span id="success-text"></span>
+                </div>
+                <div id="error-message" class="hidden bg-red-50 border border-red-100 text-red-600 p-4 rounded-xl text-xs font-bold flex items-center gap-2">
+                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <span id="error-text"></span>
+                </div>
+            </section>
+        </aside>
+
+        <main class="lg:col-span-9 space-y-5" id="main-content">
+            <section class="bg-white p-4 rounded-xl border border-stone-100 shadow-sm space-y-3 hidden" id="preview-section">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-[10px] font-black text-stone-300 uppercase tracking-widest">文件预览</h2>
+                    <div class="flex items-center gap-3">
+                        <div class="flex items-center gap-2">
+                            <label class="text-[10px] font-bold text-stone-500">字体:</label>
+                            <select id="preview-font-family" onchange="updatePreviewFont()" class="text-[10px] font-bold text-stone-600 bg-transparent border-none outline-none cursor-pointer">
+                                <option value="serif">衬线体</option>
+                                <option value="sans">非衬线体</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label class="text-[10px] font-bold text-stone-500">大小:</label>
+                            <input type="range" id="preview-font-size" min="10" max="24" value="12" oninput="updatePreviewFont()" class="w-20 h-1 bg-stone-100 accent-stone-900 appearance-none rounded-full">
+                            <span id="preview-font-size-value" class="text-[10px] font-bold text-stone-600 w-8">12</span>
+                        </div>
+                        <button onclick="closePreview()" class="text-stone-400 hover:text-stone-600 transition-colors" title="关闭预览">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="flex gap-4">
+                    <div class="w-[30%] bg-stone-50 rounded-xl border border-stone-100 p-4 max-h-[36rem] overflow-y-auto custom-scrollbar">
+                        <h3 class="text-xs font-bold text-stone-600 mb-3">目录</h3>
+                        <div id="toc-list" class="space-y-1"></div>
+                    </div>
+                    <div class="w-[70%] bg-stone-50 rounded-xl border border-stone-100 p-4 max-h-[36rem] overflow-y-auto custom-scrollbar">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-xs font-bold text-stone-600">内容</h3>
+                            <div class="flex items-center gap-3">
+                                <div class="flex items-center gap-1">
+                                    <label class="text-[9px] font-bold text-stone-500">行距:</label>
+                                    <input type="range" id="preview-line-height" min="1.2" max="2.5" step="0.1" value="1.8" oninput="updatePreviewFont()" class="w-16 h-1 bg-stone-100 accent-stone-900 appearance-none rounded-full">
+                                    <span id="preview-line-height-value" class="text-[9px] font-bold text-stone-600 w-8">1.8</span>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    <label class="text-[9px] font-bold text-stone-500">段间距:</label>
+                                    <input type="range" id="preview-paragraph-spacing" min="0" max="20" step="1" value="0" oninput="updatePreviewFont()" class="w-16 h-1 bg-stone-100 accent-stone-900 appearance-none rounded-full">
+                                    <span id="preview-paragraph-spacing-value" class="text-[9px] font-bold text-stone-600 w-8">0</span>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    <label class="text-[9px] font-bold text-stone-500">缩进:</label>
+                                    <input type="range" id="preview-indent" min="0" max="8" step="1" value="2" oninput="updatePreviewFont()" class="w-16 h-1 bg-stone-100 accent-stone-900 appearance-none rounded-full">
+                                    <span id="preview-indent-value" class="text-[9px] font-bold text-stone-600 w-8">2</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="book-cover" class="hidden mb-4 flex justify-center">
+                            <img id="cover-image" class="max-h-48 object-contain rounded shadow-lg" alt="书籍封面">
+                        </div>
+                        <div id="content-preview" class="text-xs text-stone-700 whitespace-pre-wrap leading-relaxed"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <style>
+        .custom-scrollbar::-webkit-scrollbar { width: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e7e5e4; border-radius: 10px; }
+        .sidebar-centered { margin: 0 auto; width: 100%; }
+        @media (min-width: 1024px) {
+            .sidebar-centered { max-width: 60%; }
+        }
+        .sidebar-normal { margin: 0; }
+    </style>
+
+    <script>
+        let selectedFiles = [];
+        let currentPreviewIndex = -1;
+        let fileCovers = {};
+        let currentContent = '';
+        
+        const uploadArea = document.getElementById('upload-area');
+        const fileInput = document.getElementById('file-input');
+        const fileList = document.getElementById('file-list');
+        const previewSection = document.getElementById('preview-section');
+        const progressSection = document.getElementById('progress-section');
+        const progressFill = document.getElementById('progress-fill');
+        const progressPercent = document.getElementById('progress-percent');
+        const statusText = document.getElementById('status-text');
+        const messageSection = document.getElementById('message-section');
+        const successMessage = document.getElementById('success-message');
+        const successText = document.getElementById('success-text');
+        const errorMessage = document.getElementById('error-message');
+        const errorText = document.getElementById('error-text');
+        const actionButtons = document.getElementById('action-buttons');
+        const convertBtn = document.getElementById('convert-btn');
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('bg-stone-50', 'border-stone-300');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('bg-stone-50', 'border-stone-300');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('bg-stone-50', 'border-stone-300');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileSelect({ target: { files: files } });
+            }
+        });
+        
+        function handleFileSelect(event) {
+            const files = Array.from(event.target.files);
+            if (files.length === 0) return;
+            
+            const invalidFiles = files.filter(file => {
+                const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+                return fileExtension !== '.epub';
+            });
+            
+            if (invalidFiles.length > 0) {
+                showError(`不支持的文件格式。${invalidFiles.length} 个文件被忽略。`);
+                return;
+            }
+            
+            selectedFiles = [...selectedFiles, ...files];
+            updateFileList();
+            document.getElementById('file-list-section').classList.remove('hidden');
+            actionButtons.classList.remove('hidden');
+            updateUploadAreaState();
+            resetMessages();
+        }
+        
+        function updateFileList() {
+            fileList.innerHTML = '';
+            document.getElementById('file-count').textContent = selectedFiles.length;
+            selectedFiles.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                const isActive = index === currentPreviewIndex;
+                fileItem.className = `flex items-center justify-between p-3 rounded-xl border cursor-pointer hover:bg-stone-100 transition-colors ${isActive ? 'bg-blue-50 border-blue-200' : 'bg-stone-50 border-stone-100'}`;
+                
+                const coverHtml = fileCovers[index] 
+                    ? `<img src="${fileCovers[index]}" class="w-12 h-16 object-cover rounded shadow-sm mr-3 flex-shrink-0" alt="封面">`
+                    : `<div class="w-12 h-16 bg-stone-200 rounded shadow-sm mr-3 flex-shrink-0 flex items-center justify-center">
+                        <svg class="w-6 h-6 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                        </svg>
+                    </div>`;
+                
+                fileItem.innerHTML = `
+                    <div class="flex items-center flex-1 min-w-0" onclick="previewFile(${index})">
+                        ${coverHtml}
+                        <div class="flex-1 min-w-0">
+                            <p class="text-xs font-bold ${isActive ? 'text-blue-800' : 'text-stone-800'} truncate">${escapeHtml(file.name)}</p>
+                            <p class="text-[10px] ${isActive ? 'text-blue-600' : 'text-stone-500'}">${formatFileSize(file.size)}</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-1 ml-2">
+                        <button onclick="event.stopPropagation(); previewFile(${index})" class="text-stone-400 hover:text-blue-400 p-1" title="预览">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                            </svg>
+                        </button>
+                        <button onclick="event.stopPropagation(); removeFile(${index})" class="text-stone-400 hover:text-red-400 p-1" title="删除">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                `;
+                fileList.appendChild(fileItem);
+            });
+        }
+        
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            if (selectedFiles.length === 0) {
+                clearFiles();
+            } else {
+                updateFileList();
+            }
+        }
+        
+        function clearFiles() {
+            selectedFiles = [];
+            fileInput.value = '';
+            document.getElementById('file-list-section').classList.add('hidden');
+            actionButtons.classList.add('hidden');
+            progressSection.classList.add('hidden');
+            previewSection.classList.add('hidden');
+            updateLayout();
+            updateUploadAreaState();
+            resetMessages();
+        }
+        
+        async function previewFile(index) {
+            const file = selectedFiles[index];
+            if (!file) return;
+            
+            currentPreviewIndex = index;
+            updateFileList();
+            
+            const previewSection = document.getElementById('preview-section');
+            const tocList = document.getElementById('toc-list');
+            const contentPreview = document.getElementById('content-preview');
+            
+            previewSection.classList.remove('hidden');
+            updateLayout();
+            
+            tocList.innerHTML = '<p class="text-xs text-stone-500">正在加载...</p>';
+            contentPreview.innerHTML = '<p class="text-xs text-stone-500">正在加载...</p>';
+            
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const zip = await JSZip.loadAsync(arrayBuffer);
+                
+                const cover = await extractCover(zip);
+                if (cover) {
+                    fileCovers[index] = cover;
+                    updateFileList();
+                    
+                    const bookCover = document.getElementById('book-cover');
+                    const coverImage = document.getElementById('cover-image');
+                    bookCover.classList.remove('hidden');
+                    coverImage.src = cover;
+                } else {
+                    document.getElementById('book-cover').classList.add('hidden');
+                }
+                
+                const toc = await extractTOC(zip);
+                const content = await extractContent(zip);
+                
+                tocList.innerHTML = '';
+                if (toc.length > 0) {
+                    toc.forEach((item, idx) => {
+                        const tocItem = document.createElement('div');
+                        tocItem.className = 'text-stone-700 cursor-pointer hover:text-stone-900 hover:bg-stone-100 px-2 py-1 rounded';
+                        tocItem.textContent = `${idx + 1}. ${item}`;
+                        tocItem.onclick = () => {
+                            contentPreview.textContent = content[idx] || '内容加载失败';
+                            currentContent = content[idx] || '内容加载失败';
+                            applyPreviewSettings();
+                        };
+                        tocList.appendChild(tocItem);
+                    });
+                    if (content.length > 0) {
+                        contentPreview.textContent = content[0];
+                        currentContent = content[0];
+                    }
+                    updatePreviewFont();
+                    applyPreviewSettings();
+                } else {
+                    tocList.innerHTML = '<p class="text-xs text-stone-500">未找到目录</p>';
+                    contentPreview.textContent = content[0] || '未找到内容';
+                    currentContent = content[0] || '未找到内容';
+                    updatePreviewFont();
+                    applyPreviewSettings();
+                }
+            } catch (error) {
+                tocList.innerHTML = '<p class="text-xs text-red-500">加载失败</p>';
+                contentPreview.innerHTML = '<p class="text-xs text-red-500">加载失败：' + escapeHtml(error.message) + '</p>';
+            }
+        }
+        
+        async function extractTOC(zip) {
+            const tocFile = Object.keys(zip.files).find(name => name.includes('toc.ncx') || name.includes('nav.xhtml'));
+            if (!tocFile) return [];
+            
+            const tocContent = await zip.file(tocFile).async('string');
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(tocContent, 'text/xml');
+            
+            const navPoints = doc.querySelectorAll('navPoint');
+            const toc = [];
+            
+            navPoints.forEach(point => {
+                const label = point.querySelector('text');
+                if (label && label.textContent) {
+                    toc.push(label.textContent.trim());
+                }
+            });
+            
+            return toc;
+        }
+        
+        async function extractContent(zip) {
+            const contentOpfFile = Object.keys(zip.files).find(name => name.includes('content.opf'));
+            if (!contentOpfFile) return [];
+            
+            const contentOpf = await zip.file(contentOpfFile).async('string');
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(contentOpf, 'text/xml');
+            
+            const manifestItems = xmlDoc.querySelectorAll('manifest item');
+            const spineItems = xmlDoc.querySelectorAll('spine itemref');
+            
+            const content = [];
+            
+            for (let i = 0; i < spineItems.length; i++) {
+                const itemId = spineItems[i].getAttribute('idref');
+                const manifestItem = Array.from(manifestItems).find(item => item.getAttribute('id') === itemId);
+                
+                if (manifestItem) {
+                    const href = manifestItem.getAttribute('href');
+                    const mediaType = manifestItem.getAttribute('media-type');
+                    
+                    if (mediaType && mediaType.includes('html')) {
+                        const htmlFile = Object.keys(zip.files).find(name => name === href || name.endsWith('/' + href));
+                        if (htmlFile) {
+                            const htmlContent = await zip.file(htmlFile).async('string');
+                            const cleanText = extractTextFromHtml(htmlContent);
+                            if (cleanText.trim()) {
+                                content.push(cleanText);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return content;
+        }
+        
+        async function extractCover(zip) {
+            const contentOpfFile = Object.keys(zip.files).find(name => name.includes('content.opf'));
+            if (!contentOpfFile) return null;
+            
+            const contentOpf = await zip.file(contentOpfFile).async('string');
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(contentOpf, 'text/xml');
+            
+            const manifestItems = xmlDoc.querySelectorAll('manifest item');
+            const metaItems = xmlDoc.querySelectorAll('metadata meta');
+            
+            let coverId = null;
+            
+            for (const meta of metaItems) {
+                if (meta.getAttribute('name') === 'cover') {
+                    coverId = meta.getAttribute('content');
+                    break;
+                }
+            }
+            
+            if (!coverId) {
+                for (const item of manifestItems) {
+                    if (item.getAttribute('id') === 'cover-image' || item.getAttribute('id') === 'cover') {
+                        coverId = item.getAttribute('id');
+                        break;
+                    }
+                }
+            }
+            
+            if (!coverId) return null;
+            
+            const coverItem = Array.from(manifestItems).find(item => item.getAttribute('id') === coverId);
+            if (!coverItem) return null;
+            
+            const href = coverItem.getAttribute('href');
+            const coverFile = Object.keys(zip.files).find(name => name === href || name.endsWith('/' + href));
+            if (!coverFile) return null;
+            
+            const coverData = await zip.file(coverFile).async('base64');
+            const mediaType = coverItem.getAttribute('media-type') || 'image/jpeg';
+            
+            return `data:${mediaType};base64,${coverData}`;
+        }
+        
+        function closePreview() {
+            document.getElementById('preview-section').classList.add('hidden');
+            updateLayout();
+        }
+
+        function updateLayout() {
+            const mainContainer = document.getElementById('main-container');
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('main-content');
+            const previewSection = document.getElementById('preview-section');
+            
+            if (previewSection.classList.contains('hidden')) {
+                mainContainer.classList.remove('lg:grid-cols-12');
+                mainContainer.classList.add('grid-cols-1');
+                sidebar.classList.add('sidebar-centered');
+                sidebar.classList.remove('sidebar-normal');
+                sidebar.classList.remove('lg:col-span-3');
+                mainContent.classList.add('hidden');
+            } else {
+                mainContainer.classList.add('lg:grid-cols-12');
+                mainContainer.classList.remove('grid-cols-1');
+                sidebar.classList.remove('sidebar-centered');
+                sidebar.classList.add('sidebar-normal');
+                sidebar.classList.add('lg:col-span-3');
+                mainContent.classList.remove('hidden');
+            }
+        }
+        
+        async function startConversion() {
+            if (selectedFiles.length === 0) return;
+            
+            convertBtn.disabled = true;
+            convertBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            progressSection.classList.remove('hidden');
+            resetMessages();
+            
+            try {
+                for (let i = 0; i < selectedFiles.length; i++) {
+                    const file = selectedFiles[i];
+                    updateProgress((i / selectedFiles.length) * 100, `正在转换第 ${i + 1}/${selectedFiles.length} 个文件: ${file.name}...`);
+                    await convertEpubToTxt(file);
+                }
+                updateProgress(100, '全部转换完成！');
+                showSuccess(`成功转换 ${selectedFiles.length} 个文件！`);
+            } catch (error) {
+                showError('转换失败：' + error.message);
+                progressSection.classList.add('hidden');
+                convertBtn.disabled = false;
+                convertBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+            
+            setTimeout(() => {
+                convertBtn.disabled = false;
+                convertBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }, 1000);
+        }
+        
+        async function convertEpubToTxt(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const zip = await JSZip.loadAsync(arrayBuffer);
+            
+            let textContent = '';
+            
+            const contentOpfFile = Object.keys(zip.files).find(name => name.includes('content.opf'));
+            if (contentOpfFile) {
+                const contentOpf = await zip.file(contentOpfFile).async('string');
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(contentOpf, 'text/xml');
+                
+                const manifestItems = xmlDoc.querySelectorAll('manifest item');
+                const spineItems = xmlDoc.querySelectorAll('spine itemref');
+                
+                for (let i = 0; i < spineItems.length; i++) {
+                    const itemId = spineItems[i].getAttribute('idref');
+                    const manifestItem = Array.from(manifestItems).find(item => item.getAttribute('id') === itemId);
+                    
+                    if (manifestItem) {
+                        const href = manifestItem.getAttribute('href');
+                        const mediaType = manifestItem.getAttribute('media-type');
+                        
+                        if (mediaType && mediaType.includes('html')) {
+                            const htmlFile = Object.keys(zip.files).find(name => name === href || name.endsWith('/' + href));
+                            if (htmlFile) {
+                                const htmlContent = await zip.file(htmlFile).async('string');
+                                const cleanText = extractTextFromHtml(htmlContent);
+                                if (cleanText.trim()) {
+                                    textContent += cleanText + '\n\n';
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                const htmlFiles = Object.keys(zip.files).filter(name => name.endsWith('.html') || name.endsWith('.xhtml'));
+                
+                for (let i = 0; i < htmlFiles.length; i++) {
+                    const htmlContent = await zip.file(htmlFiles[i]).async('string');
+                    const cleanText = extractTextFromHtml(htmlContent);
+                    if (cleanText.trim()) {
+                        textContent += cleanText + '\n\n';
+                    }
+                }
+            }
+            
+            const txtFileName = file.name.replace('.epub', '.txt');
+            downloadTxt(textContent, txtFileName);
+        }
+        
+        function extractTextFromHtml(html) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            
+            const body = doc.body;
+            if (!body) return '';
+            
+            body.querySelectorAll('script, style, nav, footer, header').forEach(el => el.remove());
+            
+            let text = '';
+            
+            function processNode(node, depth = 0) {
+                const indent = '    '.repeat(Math.max(0, depth));
+                
+                if (node.nodeType === Node.TEXT_NODE) {
+                    const content = node.textContent.trim();
+                    if (content) {
+                        text += indent + content + '\n';
+                    }
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    const tagName = node.tagName.toLowerCase();
+                    const isBlockElement = ['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote'].includes(tagName);
+                    
+                    if (isBlockElement) {
+                        text += '\n';
+                    }
+                    
+                    Array.from(node.childNodes).forEach(child => processNode(child, isBlockElement ? depth + 1 : depth));
+                    
+                    if (isBlockElement) {
+                        text += '\n';
+                    }
+                }
+            }
+            
+            Array.from(body.childNodes).forEach(child => processNode(child, 0));
+            
+            text = text.replace(/\n{3,}/g, '\n\n');
+            text = text.replace(/^\n+|\n+$/g, '');
+            
+            return text.trim();
+        }
+        
+        function downloadTxt(content, filename) {
+            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+            saveAs(blob, filename);
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function updateProgress(percent, status) {
+            progressFill.style.width = percent + '%';
+            progressPercent.textContent = percent + '%';
+            if (status) {
+                statusText.textContent = status;
+            }
+        }
+        
+        function showSuccess(message) {
+            successText.textContent = message;
+            successMessage.classList.remove('hidden');
+            errorMessage.classList.add('hidden');
+        }
+        
+        function showError(message) {
+            errorText.textContent = message;
+            errorMessage.classList.remove('hidden');
+            successMessage.classList.add('hidden');
+        }
+        
+        function resetMessages() {
+            successMessage.classList.add('hidden');
+            errorMessage.classList.add('hidden');
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        function updatePreviewFont() {
+            const fontFamily = document.getElementById('preview-font-family').value;
+            const fontSize = document.getElementById('preview-font-size').value;
+            const lineHeight = document.getElementById('preview-line-height').value;
+            const paragraphSpacing = document.getElementById('preview-paragraph-spacing').value;
+            const indent = document.getElementById('preview-indent').value;
+            const contentPreview = document.getElementById('content-preview');
+            const tocList = document.getElementById('toc-list');
+            
+            document.getElementById('preview-font-size-value').textContent = fontSize;
+            document.getElementById('preview-line-height-value').textContent = lineHeight;
+            document.getElementById('preview-paragraph-spacing-value').textContent = paragraphSpacing;
+            document.getElementById('preview-indent-value').textContent = indent;
+            
+            if (fontFamily === 'serif') {
+                contentPreview.classList.remove('font-sans');
+                contentPreview.classList.add('font-serif');
+                tocList.classList.remove('font-sans');
+                tocList.classList.add('font-serif');
+            } else {
+                contentPreview.classList.remove('font-serif');
+                contentPreview.classList.add('font-sans');
+                tocList.classList.remove('font-serif');
+                tocList.classList.add('font-sans');
+            }
+            
+            contentPreview.style.fontSize = fontSize + 'px';
+            contentPreview.style.lineHeight = lineHeight;
+            contentPreview.style.letterSpacing = '0';
+            tocList.style.fontSize = fontSize + 'px';
+            
+            if (currentPreviewIndex >= 0) {
+                applyPreviewSettings();
+            }
+        }
+
+        function applyPreviewSettings() {
+            const contentPreview = document.getElementById('content-preview');
+            const lineHeight = document.getElementById('preview-line-height').value;
+            const paragraphSpacing = document.getElementById('preview-paragraph-spacing').value;
+            const indent = document.getElementById('preview-indent').value;
+            
+            const paragraphs = currentContent.split('\n');
+            const formattedParagraphs = paragraphs.map(p => {
+                const trimmed = p.trim();
+                if (!trimmed) return '<p>&nbsp;</p>';
+                
+                const indentStr = '　'.repeat(parseInt(indent));
+                const marginBottom = paragraphSpacing > 0 ? `margin-bottom: ${paragraphSpacing}px;` : '';
+                return `<p style="line-height: ${lineHeight}; ${marginBottom}">${indentStr}${trimmed}</p>`;
+            });
+            
+            contentPreview.innerHTML = formattedParagraphs.join('');
+        }
+
+        function updateUploadAreaState() {
+            const uploadArea = document.getElementById('upload-area');
+            const addBookBtn = document.getElementById('add-book-btn');
+            
+            if (selectedFiles.length === 0) {
+                uploadArea.classList.remove('p-2.5');
+                uploadArea.classList.add('p-14');
+                addBookBtn.classList.add('hidden');
+            } else {
+                uploadArea.classList.remove('p-14');
+                uploadArea.classList.add('p-2.5');
+                addBookBtn.classList.remove('hidden');
+                addBookBtn.classList.remove('p-3');
+                addBookBtn.classList.add('p-2');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            updateLayout();
+            updateUploadAreaState();
+        });
+    </script>
+</body>
+</html>
